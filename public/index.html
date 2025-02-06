@@ -23,6 +23,7 @@
     <button onclick="runQuery('query2')">Run Query 2</button>
     <button onclick="runQuery('query3')">Run Query 3</button>
     <pre id="result"></pre>
+    <p id="duration"></p>
 
     <script>
         async function runQuery(query) {
@@ -32,7 +33,8 @@
             const params = new URLSearchParams({ user_id, level, product_name });
             const response = await fetch(`/${query}?${params}`);
             const data = await response.json();
-            document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+            document.getElementById('result').textContent = JSON.stringify(data.rows, null, 2);
+            document.getElementById('duration').textContent = `Query executed in ${data.duration} ms`;
         }
     </script>
 </body>

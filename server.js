@@ -14,6 +14,7 @@ app.get("/", (req, res) => {
 // Route pour la première requête
 app.get('/query1', async (req, res) => {
     const { user_id, level } = req.query;
+    const start = Date.now();
     try {
         const result = await pool.query(`
             WITH RECURSIVE followers_cte AS (
@@ -37,7 +38,8 @@ app.get('/query1', async (req, res) => {
             WHERE o.user_id != $1
             GROUP BY oi.product_id;
         `, [user_id, level]);
-        res.json(result.rows);
+        const duration = Date.now() - start;
+        res.json({ duration, rows: result.rows });
     } catch (err) {
         console.error(err);
         res.status(500).send('Erreur serveur');
@@ -47,6 +49,7 @@ app.get('/query1', async (req, res) => {
 // Route pour la deuxième requête
 app.get('/query2', async (req, res) => {
     const { user_id, level, product_name } = req.query;
+    const start = Date.now();
     try {
         const result = await pool.query(`
             WITH RECURSIVE followers_cte AS (
@@ -72,7 +75,8 @@ app.get('/query2', async (req, res) => {
             AND p.name = $3
             GROUP BY p.name;
         `, [user_id, level, product_name]);
-        res.json(result.rows);
+        const duration = Date.now() - start;
+        res.json({ duration, rows: result.rows });
     } catch (err) {
         console.error(err);
         res.status(500).send('Erreur serveur');
@@ -82,6 +86,7 @@ app.get('/query2', async (req, res) => {
 // Route pour la troisième requête
 app.get('/query3', async (req, res) => {
     const { user_id, level, product_name } = req.query;
+    const start = Date.now();
     try {
         const result = await pool.query(`
             WITH RECURSIVE followers_cte AS (
@@ -103,7 +108,8 @@ app.get('/query3', async (req, res) => {
             AND p.name = $3
             GROUP BY p.name;
         `, [user_id, level, product_name]);
-        res.json(result.rows);
+        const duration = Date.now() - start;
+        res.json({ duration, rows: result.rows });
     } catch (err) {
         console.error(err);
         res.status(500).send('Erreur serveur');

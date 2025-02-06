@@ -28,9 +28,6 @@ CREATE TABLE follows (
 
 INSERT INTO follows (follower_id, followed_id) VALUES (2, 1);
 INSERT INTO follows (follower_id, followed_id) VALUES (1, 2);
-INSERT INTO follows (follower_id, followed_id) VALUES (3, 1);
-INSERT INTO follows (follower_id, followed_id) VALUES (4, 1);
-INSERT INTO follows (follower_id, followed_id) VALUES (5, 1);
 INSERT INTO follows (follower_id, followed_id) VALUES (1, 3);
 INSERT INTO follows (follower_id, followed_id) VALUES (1, 4);
 INSERT INTO follows (follower_id, followed_id) VALUES (1, 5);
@@ -89,7 +86,7 @@ CREATE TABLE order_items (
 );
 
 INSERT INTO order_items (order_id, product_id, quantity) VALUES (2, 1, 1);
-INSERT INTO order_items (order_id, product_id, quantity) VALUES (2, 2, 2);
+INSERT INTO order_items (order_id, product_id, quantity) VALUES (2, 2, 100);
 INSERT INTO order_items (order_id, product_id, quantity) VALUES (2, 2, 2);
 INSERT INTO order_items (order_id, product_id, quantity) VALUES (3, 1, 3);
 INSERT INTO order_items (order_id, product_id, quantity) VALUES (3, 2, 1);
@@ -147,19 +144,21 @@ AND p.name = 'Apple' -- Replace with the desired product name
 GROUP BY p.name;
 
 
-WITH RECURSIVE followers_cte AS ( 
-    SELECT DISTINCT follower_id, followed_id, 
-    1 AS level FROM follows 
-    WHERE followed_id = 1 -- Replace with the actual individual_id 
-    UNION ALL 
-    SELECT DISTINCT f.follower_id, f.followed_id, fc.level + 1 
-    FROM follows f 
-    INNER JOIN followers_cte fc ON f.followed_id = fc.follower_id 
-    WHERE fc.level < 5 -- Replace with the desired level n 
-) 
-SELECT oi.product_id, COUNT(DISTINCT o.user_id) AS product_count 
-FROM order_items oi 
-JOIN orders o ON oi.order_id = o.id 
-JOIN followers_cte fc ON o.user_id = fc.follower_id 
-WHERE o.user_id != 1 -- Replace with the actual individual_id 
-GROUP BY oi.product_id;
+WITH RECURSIVE followers_cte AS (
+    SELECT DISTINCT follower_id, followed_id, 1 AS level
+    FROM follows
+    WHERE followed_id = 1 -- Replace with the actual individual_id
+    UNION ALL
+    SELECT DISTINCT f.follower_id, f.followed_id, fc.level + 1
+    FROM follows f
+    INNER JOIN followers_cte fc ON f.followed_id = fc.follower_id
+    WHERE fc.level < 5 -- Replace with the desired level n
+)
+SELECT p.name, COUNT(DISTINCT o.user_id) AS product_count
+FROM order_items oi
+JOIN orders o ON oi.order_id = o.id
+JOIN followers_cte fc ON o.user_id = fc.follower_id
+JOIN products p ON oi.product_id = p.id
+WHERE o.user_id != 1 -- Replace with the actual individual_id
+AND p.name = 'Apple' -- Replace with the desired product name
+GROUP BY p.name;

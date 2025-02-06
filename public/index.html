@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Node.js PostgreSQL Queries</title>
+</head>
+<body>
+    <h1>Node.js PostgreSQL Queries</h1>
+    <div>
+        <label for="user_id">User ID:</label>
+        <input type="number" id="user_id" name="user_id">
+    </div>
+    <div>
+        <label for="level">Level:</label>
+        <input type="number" id="level" name="level">
+    </div>
+    <div>
+        <label for="product_name">Product Name:</label>
+        <input type="text" id="product_name" name="product_name">
+    </div>
+    <button onclick="runQuery('query1')">Run Query 1</button>
+    <button onclick="runQuery('query2')">Run Query 2</button>
+    <button onclick="runQuery('query3')">Run Query 3</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function runQuery(query) {
+            const user_id = document.getElementById('user_id').value;
+            const level = document.getElementById('level').value;
+            const product_name = document.getElementById('product_name').value;
+            const params = new URLSearchParams({ user_id, level, product_name });
+            const response = await fetch(`/${query}?${params}`);
+            const data = await response.json();
+            document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+        }
+    </script>
+</body>
+</html>

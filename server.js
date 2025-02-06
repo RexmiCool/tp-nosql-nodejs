@@ -11,6 +11,95 @@ app.get("/", (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
 
+// Route pour générer des utilisateurs, des relations de suivi, des produits et des commandes
+app.get('/generate-all', async (req, res) => {
+    const { user_count, max_follows, product_count, max_products } = req.query;
+    const start = Date.now();
+    try {
+        const client = await pool.connect();
+
+        if (user_count > 0) {
+            await client.query('BEGIN');
+            // Générer des utilisateurs
+            for (let i = 0; i < user_count; i++) {
+                const username = `user${Date.now()}${i}`;
+                const age = Math.floor(Math.random() * 50) + 18;
+                await client.query('INSERT INTO users (username, age) VALUES ($1, $2)', [username, age]);
+                if (i % 50 === 0) {
+                    await client.query('COMMIT');
+                    await client.query('BEGIN');
+                }
+            }
+            await client.query('COMMIT');
+        }
+
+        // Générer des relations de suivi
+        const users = await client.query('SELECT id FROM users');
+        const userIds = users.rows.map(row => row.id);
+
+        for (const userId of userIds) {
+            await client.query('BEGIN');
+            const numFollows = Math.floor(Math.random() * (parseInt(max_follows) + 1));
+            const shuffledUserIds = userIds.sort(() => 0.5 - Math.random()).slice(0, numFollows);
+            for (const followId of shuffledUserIds) {
+                if (userId !== followId) {
+                    await client.query('INSERT INTO follows (follower_id, followed_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, followId]);
+                }
+            }
+            await client.query('COMMIT');
+        }
+
+        if (product_count > 0) {
+            await client.query('BEGIN');
+            // Générer des produits
+            for (let i = 0; i < product_count; i++) {
+                const name = `product${Date.now()}${i}`;
+                const price = (Math.random() * 100).toFixed(2);
+                await client.query('INSERT INTO products (name, price) VALUES ($1, $2)', [name, price]);
+                if (i % 50 === 0) {
+                    await client.query('COMMIT');
+                    await client.query('BEGIN');
+
+                }
+            }
+            await client.query('COMMIT');
+        }
+
+        // Générer des commandes
+        const products = await client.query('SELECT id FROM products');
+        const productIds = products.rows.map(row => row.id);
+
+        if (userIds) {
+            await client.query('BEGIN');
+            for (const [index, userId] of userIds.entries()) {
+                const numOrders = Math.floor(Math.random() * (parseInt(max_products) + 1));
+                for (let i = 0; i < numOrders; i++) {
+                    const orderResult = await client.query('INSERT INTO orders (user_id) VALUES ($1) RETURNING id', [userId]);
+                    const orderId = orderResult.rows[0].id;
+                    const numOrderItems = Math.floor(Math.random() * (parseInt(max_products) + 1));
+                    const shuffledProductIds = productIds.sort(() => 0.5 - Math.random()).slice(0, numOrderItems);
+                    for (const productId of shuffledProductIds) {
+                        const quantity = Math.floor(Math.random() * 10) + 1;
+                        await client.query('INSERT INTO order_items (order_id, product_id, quantity) VALUES ($1, $2, $3)', [orderId, productId, quantity]);
+                    }
+                }
+                if (index % 10 === 0) {
+                    await client.query('COMMIT');
+                    await client.query('BEGIN');
+                }
+            }
+            await client.query('COMMIT');
+        }
+
+        client.release();
+        const duration = Date.now() - start;
+        res.json({ message: `Generated ${user_count} users, ${product_count} products, and orders with max ${max_products} products per user`, duration });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Erreur serveur');
+    }
+});
+
 // Route pour la première requête
 app.get('/query1', async (req, res) => {
     const { user_id, level } = req.query;

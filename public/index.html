@@ -3,107 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Node.js PostgreSQL Queries</title>
+    <title>Database Selection</title>
 </head>
 <body>
-    <h1>Node.js PostgreSQL Queries</h1>
+    <h1>Select Database</h1>
     <div>
-        <label for="user_id">User ID:</label>
-        <input type="number" id="user_id" name="user_id">
+        <button onclick="navigateTo('postgres')">PostgreSQL</button>
+        <button onclick="navigateTo('neo4j')">Neo4j</button>
     </div>
-    <div>
-        <label for="level">Level:</label>
-        <input type="number" id="level" name="level">
-    </div>
-    <div>
-        <label for="product_name">Product Name:</label>
-        <input type="text" id="product_name" name="product_name">
-    </div>
-    <div>
-        <label for="user_count">Number of Users:</label>
-        <input type="number" id="user_count" name="user_count">
-    </div>
-    <div>
-        <label for="max_follows">Max Follows per User:</label>
-        <input type="number" id="max_follows" name="max_follows">
-    </div>
-    <div>
-        <label for="product_count">Number of Products:</label>
-        <input type="number" id="product_count" name="product_count">
-    </div>
-    <div>
-        <label for="max_products">Max Products per User:</label>
-        <input type="number" id="max_products" name="max_products">
-    </div>
-    <button onclick="runQuery('query1')">Run Query 1</button>
-    <button onclick="runQuery('query2')">Run Query 2</button>
-    <button onclick="runQuery('query3')">Run Query 3</button>
-    <button onclick="generateUsers()">Generate Users</button>
-    <button onclick="generateFollows()">Generate Follows</button>
-    <button onclick="generateProducts()">Generate Products</button>
-    <button onclick="generateOrders()">Generate Orders</button>
-    <button onclick="generateAll()">Generate All</button>
-    <pre id="result"></pre>
-    <p id="duration"></p>
 
     <script>
-        async function runQuery(query) {
-            const user_id = document.getElementById('user_id').value;
-            const level = document.getElementById('level').value;
-            const product_name = document.getElementById('product_name').value;
-            const params = new URLSearchParams({ user_id, level, product_name });
-            const response = await fetch(`/${query}?${params}`);
-            const data = await response.json();
-            document.getElementById('result').textContent = JSON.stringify(data.rows, null, 2);
-            document.getElementById('duration').textContent = `Query executed in ${data.duration} ms`;
-        }
-
-        async function generateUsers() {
-            const count = document.getElementById('user_count').value;
-            const params = new URLSearchParams({ count });
-            const response = await fetch(`/generate-users?${params}`);
-            const data = await response.json();
-            document.getElementById('result').textContent = data.message;
-            document.getElementById('duration').textContent = `Users generated in ${data.duration} ms`;
-        }
-
-        async function generateFollows() {
-            const max_follows = document.getElementById('max_follows').value;
-            const params = new URLSearchParams({ max_follows });
-            const response = await fetch(`/generate-follows?${params}`);
-            const data = await response.json();
-            document.getElementById('result').textContent = data.message;
-            document.getElementById('duration').textContent = `Follows generated in ${data.duration} ms`;
-        }
-
-        async function generateProducts() {
-            const count = document.getElementById('product_count').value;
-            const params = new URLSearchParams({ count });
-            const response = await fetch(`/generate-products?${params}`);
-            const data = await response.json();
-            document.getElementById('result').textContent = data.message;
-            document.getElementById('duration').textContent = `Products generated in ${data.duration} ms`;
-        }
-
-        async function generateOrders() {
-            const max_products = document.getElementById('max_products').value;
-            const params = new URLSearchParams({ max_products });
-            const response = await fetch(`/generate-orders?${params}`);
-            const data = await response.json();
-            document.getElementById('result').textContent = data.message;
-            document.getElementById('duration').textContent = `Orders generated in ${data.duration} ms`;
-        }
-
-        async function generateAll() {
-            const user_count = document.getElementById('user_count').value;
-            const max_follows = document.getElementById('max_follows').value;
-            const product_count = document.getElementById('product_count').value;
-            const max_products = document.getElementById('max_products').value;
-            const params = new URLSearchParams({ user_count, max_follows, product_count, max_products });
-            const response = await fetch(`/generate-all?${params}`);
-            const data = await response.json();
-            document.getElementById('result').textContent = data.message;
-            document.getElementById('duration').textContent = `All data generated in ${data.duration} ms`;
+        function navigateTo(db) {
+            if (db === 'postgres') {
+                window.location.href = 'postgres.html';
+            } else if (db === 'neo4j') {
+                window.location.href = 'neo4j.html';
+            }
         }
     </script>
 </body>

@@ -213,7 +213,7 @@ app.get('/generate-all', async (req, res) => {
 });
 
 // Route pour générer toutes les données dans Neo4j
-app.get('/generate-all-neo4j', async (req, res) => {
+app.get('/generate-all-neo4j-old', async (req, res) => {
     const { user_count, max_follows, product_count, max_products } = req.query;
     const start = Date.now();
     const session = neo4j.session();
@@ -294,6 +294,107 @@ app.get('/generate-all-neo4j', async (req, res) => {
     }
 });
 
+app.get('/generate-all-neo4j', async (req, res) => {
+    console.log(`Generating all Neo4j data at ${new Date().toISOString()}`);
+    
+    const { user_count, max_follows, product_count, max_products } = req.query;
+    const start = Date.now();
+    const session = neo4j.session();
+
+    try {
+        // Générer des utilisateurs en batch
+        let users = [];
+        for (let i = 0; i < user_count; i++) {
+            users.push({ id: i, username: `user${Date.now()}${i}`, age: Math.floor(Math.random() * 50) + 18 });
+        }
+        await session.run(
+            'UNWIND $users AS user CREATE (u:User {id: user.id, username: user.username, age: user.age})',
+            { users }
+        );
+
+        // Récupérer les IDs des utilisateurs
+        const usersResult = await session.run('MATCH (u:User) RETURN u.id AS id');
+        const userIds = usersResult.records.map(record => record.get('id'));
+
+        // Générer des relations de suivi en batch
+        let follows = [];
+        for (const userId of userIds) {
+            const numFollows = Math.floor(Math.random() * (parseInt(max_follows) + 1));
+            const shuffledUserIds = userIds.filter(id => id !== userId).slice(0, numFollows);
+            shuffledUserIds.forEach(followId => follows.push({ userId, followId }));
+        }
+        if (follows.length > 0) {
+            await session.run(
+                'UNWIND $follows AS follow MATCH (a:User {id: follow.userId}), (b:User {id: follow.followId}) CREATE (a)-[:FOLLOWS]->(b)',
+                { follows }
+            );
+        }
+
+        // Générer des produits en batch
+        let products = [];
+        for (let i = 0; i < product_count; i++) {
+            products.push({ id: i, name: `product${Date.now()}${i}`, price: (Math.random() * 100).toFixed(2) });
+        }
+        await session.run(
+            'UNWIND $products AS product CREATE (p:Product {id: product.id, name: product.name, price: product.price})',
+            { products }
+        );
+
+        // Récupérer les IDs des produits
+        const productsResult = await session.run('MATCH (p:Product) RETURN p.id AS id');
+        const productIds = productsResult.records.map(record => record.get('id'));
+
+        // Générer des commandes et leurs relations en batch
+        let orders = [];
+        let orderRelations = [];
+        let orderProducts = [];
+        let orderIndex = 0;
+
+        for (const userId of userIds) {
+            const numOrders = Math.floor(Math.random() * (parseInt(max_products) + 1));
+            for (let i = 0; i < numOrders; i++) {
+                const orderId = `order${Date.now()}${orderIndex++}`;
+                const createdAt = new Date().toISOString();
+                orders.push({ id: orderId, created_at: createdAt });
+                orderRelations.push({ userId, orderId });
+
+                const numOrderItems = Math.floor(Math.random() * (parseInt(max_products) + 1));
+                const shuffledProductIds = productIds.slice(0, numOrderItems);
+                shuffledProductIds.forEach(productId => {
+                    orderProducts.push({ orderId, productId, quantity: Math.floor(Math.random() * 10) + 1 });
+                });
+            }
+        }
+
+        if (orders.length > 0) {
+            await session.run(
+                'UNWIND $orders AS order CREATE (o:Order {id: order.id, created_at: order.created_at})',
+                { orders }
+            );
+        }
+        if (orderRelations.length > 0) {
+            await session.run(
+                'UNWIND $orderRelations AS relation MATCH (u:User {id: relation.userId}), (o:Order {id: relation.orderId}) CREATE (u)-[:ORDERED]->(o)',
+                { orderRelations }
+            );
+        }
+        if (orderProducts.length > 0) {
+            await session.run(
+                'UNWIND $orderProducts AS op MATCH (o:Order {id: op.orderId}), (p:Product {id: op.productId}) CREATE (o)-[:ORDERED_PRODUCTS {quantity: op.quantity}]->(p)',
+                { orderProducts }
+            );
+        }
+
+        session.close();
+        const duration = Date.now() - start;
+        res.json({ message: `Generated ${user_count} users, ${product_count} products, and orders with max ${max_products} products per user in Neo4j`, duration });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Erreur serveur');
+    }
+    console.log(`End generating all Neo4j data at ${new Date().toISOString()}`);
+});
+
 // Route pour supprimer toutes les données de PostgreSQL
 app.get('/delete-all-postgres', async (req, res) => {
     const start = Date.now();
@@ -358,6 +459,35 @@ app.get('/query1', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).send('Erreur serveur');
+    }
+});
+
+// Route pour la première requête sur Neo4j
+app.get('/query1-neo4j', async (req, res) => {
+    const { user_id, level } = req.query;
+    const start = Date.now();
+    const session = neo4j.session();
+    try {
+        const query = `
+            MATCH (u:User {id: $user_id})-[:FOLLOWS*1..${parseInt(level)}]->(follower:User)
+            WITH DISTINCT follower
+            MATCH (follower)-[:ORDERED]->(o:Order)-[:ORDERED_PRODUCTS]->(p:Product)
+            RETURN p.id AS product_id, SUM(o.quantity) AS total_quantity
+        `;
+        const result = await session.run(query, { user_id: parseInt(user_id) });
+        
+        const rows = result.records.map(record => ({
+            product_id: record.get('product_id'),
+            total_quantity: record.get('total_quantity').toInt()
+        }));
+        
+        const duration = Date.now() - start;
+        res.json({ duration, rows });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Erreur serveur');
+    } finally {
+        session.close();
     }
 });
 

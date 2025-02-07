@@ -294,24 +294,25 @@ app.get('/query3', async (req, res) => {
     try {
         const result = await pool.query(`
             WITH RECURSIVE followers_cte AS (
-                SELECT DISTINCT follower_id, followed_id, 1 AS level
-                FROM follows
-                WHERE followed_id = $1
+                -- Niveau 0 : utilisateurs qui ont commandé le produit
+                SELECT DISTINCT o.user_id, 0 AS level
+                FROM order_items oi
+                JOIN orders o ON oi.order_id = o.id
+                JOIN products p ON oi.product_id = p.id
+                WHERE p.name = $1
+
                 UNION ALL
-                SELECT DISTINCT f.follower_id, f.followed_id, fc.level + 1
+
+                -- Niveaux suivants : followers des utilisateurs précédents
+                SELECT f.followed_id AS user_id, fc.level + 1
                 FROM follows f
-                INNER JOIN followers_cte fc ON f.followed_id = fc.follower_id
+                JOIN followers_cte fc ON f.follower_id = fc.user_id
                 WHERE fc.level < $2
             )
-            SELECT p.name, COUNT(DISTINCT o.user_id) AS product_count
-            FROM order_items oi
-            JOIN orders o ON oi.order_id = o.id
-            JOIN followers_cte fc ON o.user_id = fc.follower_id
-            JOIN products p ON oi.product_id = p.id
-            WHERE o.user_id != $1
-            AND p.name = $3
-            GROUP BY p.name;
-        `, [user_id, level, product_name]);
+            SELECT DISTINCT user_id
+            FROM followers_cte
+            WHERE level = $2;
+        `, [product_name, level]);
         const duration = Date.now() - start;
         res.json({ duration, rows: result.rows });
     } catch (err) {

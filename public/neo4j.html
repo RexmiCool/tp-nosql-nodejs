@@ -69,7 +69,13 @@
                 <label for="neo4j_level">Level:</label>
                 <input type="number" id="neo4j_level" name="neo4j_level">
             </div>
+            <div>
+                <label for="neo4j_product_name">Product Name:</label>
+                <input type="text" id="neo4j_product_name" name="neo4j_product_name">
+            </div>
             <button onclick="runQuery1Neo4j()">Run Query 1</button>
+            <button onclick="runQuery2Neo4j()">Run Query 2</button>
+            <button onclick="runQuery3Neo4j()">Run Query 3</button>
         </div>
 
         <pre id="neo4j_result"></pre>
@@ -101,6 +107,27 @@
             const level = document.getElementById('neo4j_level').value;
             const params = new URLSearchParams({ user_id, level });
             const response = await fetch(`/query1-neo4j?${params}`);
+            const data = await response.json();
+            document.getElementById('neo4j_result').textContent = JSON.stringify(data.rows, null, 2);
+            document.getElementById('neo4j_duration').textContent = `Query executed in ${data.duration} ms`;
+        }
+
+        async function runQuery2Neo4j() {
+            const user_id = document.getElementById('neo4j_user_id').value;
+            const level = document.getElementById('neo4j_level').value;
+            const product_name = document.getElementById('neo4j_product_name').value;
+            const params = new URLSearchParams({ user_id, level, product_name });
+            const response = await fetch(`/query2-neo4j?${params}`);
+            const data = await response.json();
+            document.getElementById('neo4j_result').textContent = JSON.stringify(data.rows, null, 2);
+            document.getElementById('neo4j_duration').textContent = `Query executed in ${data.duration} ms`;
+        }
+
+        async function runQuery3Neo4j() {
+            const product_name = document.getElementById('neo4j_product_name').value;
+            const level = document.getElementById('neo4j_level').value;
+            const params = new URLSearchParams({ product_name, level });
+            const response = await fetch(`/query3-neo4j?${params}`);
             const data = await response.json();
             document.getElementById('neo4j_result').textContent = JSON.stringify(data.rows, null, 2);
             document.getElementById('neo4j_duration').textContent = `Query executed in ${data.duration} ms`;

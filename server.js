@@ -469,16 +469,47 @@ app.get('/query1-neo4j', async (req, res) => {
     const session = neo4j.session();
     try {
         const query = `
-            MATCH (u:User {id: $user_id})-[:FOLLOWS*1..${parseInt(level)}]->(follower:User)
+            MATCH (u:User {id: $user_id})<-[:FOLLOWS*1..${parseInt(level)}]-(follower:User)
             WITH DISTINCT follower
-            MATCH (follower)-[:ORDERED]->(o:Order)-[:ORDERED_PRODUCTS]->(p:Product)
-            RETURN p.id AS product_id, SUM(o.quantity) AS total_quantity
+            MATCH (follower)-[:ORDERED]->(o:Order)-[op:ORDERED_PRODUCTS]->(p:Product)
+            RETURN p.id AS product_id, p.name AS product_name, SUM(op.quantity) AS total_quantity
         `;
         const result = await session.run(query, { user_id: parseInt(user_id) });
         
         const rows = result.records.map(record => ({
             product_id: record.get('product_id'),
-            total_quantity: record.get('total_quantity').toInt()
+            product_name: record.get('product_name'),
+            total_quantity: record.get('total_quantity')
+        }));
+        
+        const duration = Date.now() - start;
+        res.json({ duration, rows });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Erreur serveur');
+    } finally {
+        session.close();
+    }
+});
+
+// Route pour la deuxieme requête sur Neo4j
+app.get('/query2-neo4j', async (req, res) => {
+    const { user_id, level, product_name } = req.query;
+    const start = Date.now();
+    const session = neo4j.session();
+    try {
+        const query = `
+            MATCH (u:User {id: $user_id})<-[:FOLLOWS*1..${parseInt(level)}]-(follower:User)
+            WITH DISTINCT follower
+            MATCH (follower)-[:ORDERED]->(o:Order)-[op:ORDERED_PRODUCTS]->(p:Product {name: $product_name})
+            RETURN p.id AS product_id, p.name AS product_name, SUM(op.quantity) AS total_quantity
+        `;
+        const result = await session.run(query, { user_id: parseInt(user_id) , product_name: product_name});
+        
+        const rows = result.records.map(record => ({
+            product_id: record.get('product_id'),
+            product_name: record.get('product_name'),
+            total_quantity: record.get('total_quantity')
         }));
         
         const duration = Date.now() - start;
@@ -525,6 +556,34 @@ app.get('/query2', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).send('Erreur serveur');
+    }
+});
+
+// Route pour la troisième requête sur Neo4j
+app.get('/query3-neo4j', async (req, res) => {
+    const { product_name, level } = req.query;
+    const start = Date.now();
+    const session = neo4j.session();
+    try {
+        const query = `
+            MATCH (p:Product {name: $product_name})<-[:ORDERED_PRODUCTS]-(o:Order)<-[:ORDERED]-(u:User)
+            WITH DISTINCT u, 0 AS level
+            MATCH (u)<-[:FOLLOWS*1..${parseInt(level)}]-(follower:User)
+            RETURN COUNT(DISTINCT follower.id) AS buyer_number
+        `;
+        const result = await session.run(query, { product_name, level: parseInt(level) });
+        
+        const rows = result.records.map(record => ({
+            buyer_number: record.get('buyer_number')
+        }));
+        
+        const duration = Date.now() - start;
+        res.json({ duration, rows });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Erreur serveur');
+    } finally {
+        session.close();
     }
 });
 

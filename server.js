@@ -19,35 +19,76 @@ app.get('/generate-all', async (req, res) => {
         const client = await pool.connect();
 
         if (user_count > 0) {
+            const batchSize = 50;
             await client.query('BEGIN');
-            // Générer des utilisateurs
-            for (let i = 0; i < user_count; i++) {
-                const username = `user${Date.now()}${i}`;
-                const age = Math.floor(Math.random() * 50) + 18;
-                await client.query('INSERT INTO users (username, age) VALUES ($1, $2)', [username, age]);
-                if (i % 50 === 0) {
-                    await client.query('COMMIT');
+            for (let i = 0; i < user_count; i += batchSize) {
+                const batchCount = Math.min(batchSize, user_count - i);
+                const query = `
+                    DO $$
+                    DECLARE
+                        user_count INT := ${batchCount};
+                        start_index INT := ${i + 1};
+                        username TEXT;
+                        age INT;
+                    BEGIN
+                        FOR j IN 0..user_count - 1 LOOP
+                            username := 'user' || (start_index + j) || floor(random() * 1000000)::TEXT;
+                            age := floor(random() * 50 + 18)::INT;
+                            INSERT INTO users (username, age) VALUES (username, age);
+                        END LOOP;
+                    END $$;
+                `;
+                await client.query(query);
+                await client.query('COMMIT');
+                if (i + batchSize < user_count) {
                     await client.query('BEGIN');
                 }
             }
-            await client.query('COMMIT');
         }
+        console.log("Users generated " + (Date.now() - start) + " ms");
 
         // Générer des relations de suivi
-        const users = await client.query('SELECT id FROM users');
-        const userIds = users.rows.map(row => row.id);
+        const followStart = Date.now();
+        const followQuery = `
+            DO $$
+            DECLARE
+                user_count INT;
+                max_follows INT := ${parseInt(max_follows)};
+                user_ids INT[];
+                followQueries TEXT := '';
+                user_id INT;
+                follow_id INT;
+                num_follows INT;
+                i INT;
+                j INT;
+            BEGIN
+                SELECT array_agg(id) INTO user_ids FROM users;
+                user_count := array_length(user_ids, 1);
+                FOR i IN 1..user_count LOOP
+                    user_id := user_ids[i];
+                    num_follows := floor(random() * (max_follows + 1))::INT;
+                    FOR j IN 1..num_follows LOOP
+                        follow_id := user_ids[floor(random() * user_count + 1)::INT];
+                        IF user_id != follow_id THEN
+                            followQueries := followQueries || format('(%s, %s),', user_id, follow_id);
+                            IF array_length(string_to_array(followQueries, ','), 1) >= 50 THEN
+                                followQueries := rtrim(followQueries, ',');
+                                EXECUTE format('INSERT INTO follows (follower_id, followed_id) VALUES %s ON CONFLICT DO NOTHING', followQueries);
+                                followQueries := '';
+                            END IF;
+                        END IF;
+                    END LOOP;
+                END LOOP;
+                IF followQueries != '' THEN
+                    followQueries := rtrim(followQueries, ',');
+                    EXECUTE format('INSERT INTO follows (follower_id, followed_id) VALUES %s ON CONFLICT DO NOTHING', followQueries);
+                END IF;
+            END $$;
+            `;
 
-        for (const userId of userIds) {
-            await client.query('BEGIN');
-            const numFollows = Math.floor(Math.random() * (parseInt(max_follows) + 1));
-            const shuffledUserIds = userIds.sort(() => 0.5 - Math.random()).slice(0, numFollows);
-            for (const followId of shuffledUserIds) {
-                if (userId !== followId) {
-                    await client.query('INSERT INTO follows (follower_id, followed_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, followId]);
-                }
-            }
-            await client.query('COMMIT');
-        }
+        await client.query(followQuery);
+        const followDuration = Date.now() - followStart;
+        console.log(`Follows generation took ${followDuration} ms`);
 
         if (product_count > 0) {
             await client.query('BEGIN');
@@ -65,31 +106,101 @@ app.get('/generate-all', async (req, res) => {
             await client.query('COMMIT');
         }
 
-        // Générer des commandes
-        const products = await client.query('SELECT id FROM products');
-        const productIds = products.rows.map(row => row.id);
+        console.log("Products generated " + (Date.now() - start) + " ms");
 
-        if (userIds) {
-            await client.query('BEGIN');
-            for (const [index, userId] of userIds.entries()) {
-                const numOrders = Math.floor(Math.random() * (parseInt(max_products) + 1));
-                for (let i = 0; i < numOrders; i++) {
-                    const orderResult = await client.query('INSERT INTO orders (user_id) VALUES ($1) RETURNING id', [userId]);
-                    const orderId = orderResult.rows[0].id;
-                    const numOrderItems = Math.floor(Math.random() * (parseInt(max_products) + 1));
-                    const shuffledProductIds = productIds.sort(() => 0.5 - Math.random()).slice(0, numOrderItems);
-                    for (const productId of shuffledProductIds) {
-                        const quantity = Math.floor(Math.random() * 10) + 1;
-                        await client.query('INSERT INTO order_items (order_id, product_id, quantity) VALUES ($1, $2, $3)', [orderId, productId, quantity]);
-                    }
-                }
-                if (index % 10 === 0) {
-                    await client.query('COMMIT');
-                    await client.query('BEGIN');
-                }
-            }
-            await client.query('COMMIT');
-        }
+        const orderStart = Date.now();
+
+        // Première partie : Insérer les commandes dans la table orders
+        const orderInsertQuery = `
+        DO $$
+        DECLARE
+            user_count INT;
+            max_products INT := ${parseInt(max_products)};
+            user_ids INT[];
+            orderQueries TEXT := '';
+            user_id INT;
+            order_id INT;
+            numOrders INT;
+            i INT;
+            j INT;
+        BEGIN
+            SELECT array_agg(id) INTO user_ids FROM users;
+            user_count := array_length(user_ids, 1);
+            FOR i IN 1..user_count LOOP
+                user_id := user_ids[i];
+                numOrders := floor(random() * (max_products + 1))::INT;
+                FOR j IN 1..numOrders LOOP
+                    order_id := nextval('orders_id_seq');
+                    orderQueries := orderQueries || format('(%s, %s),', order_id, user_id);
+                    IF array_length(string_to_array(orderQueries, ','), 1) >= 50 THEN
+                        orderQueries := rtrim(orderQueries, ',');
+                        EXECUTE format('INSERT INTO orders (id, user_id) VALUES %s', orderQueries);
+                        orderQueries := '';
+                    END IF;
+                END LOOP;
+            END LOOP;
+            IF orderQueries != '' THEN
+                orderQueries := rtrim(orderQueries, ',');
+                EXECUTE format('INSERT INTO orders (id, user_id) VALUES %s', orderQueries);
+            END IF;
+        END $$;
+        `;
+
+        await client.query(orderInsertQuery);
+        console.log(`Orders insertion took ${Date.now() - orderStart} ms`);
+
+        // Deuxième partie : Insérer les éléments de commande dans la table order_items
+        const orderItemsStart = Date.now();
+        const orderItemsInsertQuery = `
+            DO $$ 
+            DECLARE
+                max_products INT := ${parseInt(max_products)};
+                product_ids INT[];
+                order_ids INT[];
+                orderItemQueries TEXT := '';
+                v_order_id INT;
+                v_product_id INT;
+                v_quantity INT;
+                numOrderItems INT;
+                i INT;
+                j INT;
+            BEGIN
+                SELECT array_agg(id) INTO product_ids FROM products;
+                SELECT array_agg(id) INTO order_ids FROM orders;
+                
+                FOR i IN 1..array_length(order_ids, 1) LOOP
+                    v_order_id := order_ids[i];
+                    numOrderItems := floor(random() * (max_products + 1))::INT;
+                    
+                    FOR j IN 1..numOrderItems LOOP
+                        v_product_id := product_ids[floor(random() * array_length(product_ids, 1) + 1)::INT];
+                        v_quantity := floor(random() * 10 + 1)::INT;
+
+                        orderItemQueries := orderItemQueries || format('(%s, %s, %s),', v_order_id, v_product_id, v_quantity);
+
+                        IF array_length(string_to_array(orderItemQueries, ','), 1) >= 50 THEN
+                            orderItemQueries := rtrim(orderItemQueries, ',');
+                            EXECUTE format(
+                                'INSERT INTO order_items (order_id, product_id, quantity) VALUES %s ON CONFLICT (order_id, product_id) DO NOTHING',
+                                orderItemQueries
+                            );
+                            orderItemQueries := '';
+                        END IF;
+                    END LOOP;
+                END LOOP;
+
+                IF orderItemQueries != '' THEN
+                    orderItemQueries := rtrim(orderItemQueries, ',');
+                    EXECUTE format(
+                        'INSERT INTO order_items (order_id, product_id, quantity) VALUES %s ON CONFLICT (order_id, product_id) DO NOTHING',
+                        orderItemQueries
+                    );
+                END IF;
+            END $$;
+            `;
+
+        await client.query(orderItemsInsertQuery);
+        console.log(`Order items insertion took ${Date.now() - orderItemsStart} ms`);
 
         client.release();
         const duration = Date.now() - start;

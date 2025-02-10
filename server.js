@@ -477,9 +477,9 @@ app.get('/query1-neo4j', async (req, res) => {
         const result = await session.run(query, { user_id: parseInt(user_id) });
         
         const rows = result.records.map(record => ({
-            product_id: record.get('product_id'),
+            product_id: record.get('product_id').toNumber(),
             product_name: record.get('product_name'),
-            total_quantity: record.get('total_quantity')
+            total_quantity: record.get('total_quantity').toNumber()
         }));
         
         const duration = Date.now() - start;
@@ -507,9 +507,9 @@ app.get('/query2-neo4j', async (req, res) => {
         const result = await session.run(query, { user_id: parseInt(user_id) , product_name: product_name});
         
         const rows = result.records.map(record => ({
-            product_id: record.get('product_id'),
+            product_id: record.get('product_id').toNumber(),
             product_name: record.get('product_name'),
-            total_quantity: record.get('total_quantity')
+            total_quantity: record.get('total_quantity').toNumber()
         }));
         
         const duration = Date.now() - start;
@@ -567,14 +567,21 @@ app.get('/query3-neo4j', async (req, res) => {
     try {
         const query = `
             MATCH (p:Product {name: $product_name})<-[:ORDERED_PRODUCTS]-(o:Order)<-[:ORDERED]-(u:User)
-            WITH DISTINCT u, 0 AS level
-            MATCH (u)<-[:FOLLOWS*1..${parseInt(level)}]-(follower:User)
+            WITH COLLECT(DISTINCT u) AS buyers, p
+
+            MATCH path = (buyer:User)<-[:FOLLOWS*${parseInt(level)}]-(follower:User)
+            WHERE buyer IN buyers 
+            AND follower IN buyers
+            AND ALL(intermediate IN NODES(path) WHERE 
+                (intermediate:User) 
+                AND EXISTS { (intermediate)-[:ORDERED]->(:Order)-[:ORDERED_PRODUCTS]->(p) }
+            )
             RETURN COUNT(DISTINCT follower.id) AS buyer_number
         `;
         const result = await session.run(query, { product_name, level: parseInt(level) });
         
         const rows = result.records.map(record => ({
-            buyer_number: record.get('buyer_number')
+            buyer_number: record.get('buyer_number').toNumber()
         }));
         
         const duration = Date.now() - start;

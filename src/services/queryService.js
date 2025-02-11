@@ -17,12 +17,13 @@ const query1Postgres = async (userId, level) => {
             SELECT DISTINCT follower_id
             FROM followers_cte
         )
-        SELECT oi.product_id, SUM(oi.quantity) AS total_quantity
+        SELECT oi.product_id, p.name, SUM(oi.quantity) AS total_quantity
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
         JOIN unique_followers uf ON o.user_id = uf.follower_id
+        JOIN products p ON oi.product_id = p.id
         WHERE o.user_id != $1
-        GROUP BY oi.product_id;
+        GROUP BY oi.product_id, p.name;
     `, [userId, level]);
     return result.rows;
 };
@@ -106,7 +107,7 @@ const query3Postgres = async (productName, level) => {
             JOIN products p ON oi.product_id = p.id
             WHERE p.name = $1 AND fc.level < $2
         )
-        SELECT DISTINCT user_id
+        SELECT COUNT(DISTINCT user_id) as buyer_number
         FROM followers_cte
         WHERE level = $2;
     `, [productName, level]);

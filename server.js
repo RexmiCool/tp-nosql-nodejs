@@ -512,9 +512,9 @@ app.get('/query3-neo4j', async (req, res) => {
     }
 });
 
-// Route pour la troisième requête
+// Route pour la troisième requête sur PostgreSQL
 app.get('/query3', async (req, res) => {
-    const { user_id, level, product_name } = req.query;
+    const { product_name, level } = req.query;
     const start = Date.now();
     try {
         const result = await pool.query(`
@@ -529,10 +529,13 @@ app.get('/query3', async (req, res) => {
                 UNION ALL
 
                 -- Niveaux suivants : followers des utilisateurs précédents
-                SELECT f.followed_id AS user_id, fc.level + 1
+                SELECT f.follower_id AS user_id, fc.level + 1
                 FROM follows f
-                JOIN followers_cte fc ON f.follower_id = fc.user_id
-                WHERE fc.level < $2
+                JOIN followers_cte fc ON f.followed_id = fc.user_id
+                JOIN orders o ON o.user_id = f.follower_id
+                JOIN order_items oi ON oi.order_id = o.id
+                JOIN products p ON oi.product_id = p.id
+                WHERE p.name = $1 AND fc.level < $2
             )
             SELECT DISTINCT user_id
             FROM followers_cte
@@ -545,6 +548,7 @@ app.get('/query3', async (req, res) => {
         res.status(500).send('Erreur serveur');
     }
 });
+
 
 // Démarrer le serveur
 app.listen(PORT, () => {

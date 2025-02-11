@@ -29,7 +29,7 @@ const query1Postgres = async (userId, level) => {
 
 const query1Neo4j = async (userId, level) => {
     const query = `
-        MATCH (u:User {id: $user_id})<-[:FOLLOWS*1..${parseInt(level)}]-(follower:User)
+        MATCH (u:User {id: $user_id})<-[:FOLLOWS*${parseInt(level)}]-(follower:User)
         WITH DISTINCT follower
         MATCH (follower)-[:ORDERED]->(o:Order)-[op:ORDERED_PRODUCTS]->(p:Product)
         RETURN p.id AS product_id, p.name AS product_name, SUM(op.quantity) AS total_quantity
@@ -72,7 +72,7 @@ const query2Postgres = async (userId, level, productName) => {
 
 const query2Neo4j = async (userId, level, productName) => {
     const query = `
-        MATCH (u:User {id: $user_id})<-[:FOLLOWS*1..${parseInt(level)}]-(follower:User)
+        MATCH (u:User {id: $user_id})<-[:FOLLOWS*${parseInt(level)}]-(follower:User)
         WITH DISTINCT follower
         MATCH (follower)-[:ORDERED]->(o:Order)-[op:ORDERED_PRODUCTS]->(p:Product {name: $product_name})
         RETURN p.id AS product_id, p.name AS product_name, SUM(op.quantity) AS total_quantity

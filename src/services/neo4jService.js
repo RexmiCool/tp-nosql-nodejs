@@ -2,69 +2,84 @@ const neo4jRepository = require('../repositories/neo4jRepository');
 
 const generateAllData = async (userCount, maxFollows, productCount, maxProducts) => {
     const session = neo4jRepository.driver.session();
+    let batchSize = 1000; // Taille du lot pour les transactions
     try {
         // Générer des utilisateurs en batch
-        let users = [];
-        for (let i = 0; i < userCount; i++) {
-            users.push({ id: i, username: `user${Date.now()}${i}`, age: Math.floor(Math.random() * 50) + 18 });
+        console.time('generateUsers');
+        for (let i = 0; i < userCount; i += batchSize) {
+            const batchEnd = Math.min(i + batchSize, userCount);
+            const userQuery = `
+                UNWIND range($start, $end) AS id
+                CREATE (u:User {id: id, username: 'user' + id + toString(timestamp()), age: toInteger(rand() * 50) + 18})
+            `;
+            await session.run(userQuery, { start: i + 1, end: batchEnd });
         }
-        await neo4jRepository.generateUsers(session, users);
-
-        // Récupérer les IDs des utilisateurs
-        const userIds = await neo4jRepository.getUserIds(session);
+        console.timeEnd('generateUsers');
 
         // Générer des relations de suivi en batch
-        let follows = [];
-        for (const userId of userIds) {
-            const numFollows = Math.floor(Math.random() * (parseInt(maxFollows) + 1));
-            const shuffledUserIds = userIds.filter(id => id !== userId).slice(0, numFollows);
-            shuffledUserIds.forEach(followId => follows.push({ userId, followId }));
+        console.time('generateFollows');
+        batchSize = 100;
+        for (let i = 0; i < userCount; i += batchSize) {
+            const batchEnd = Math.min(i + batchSize, userCount);
+            const followQuery = `
+                CALL {
+                    WITH $start AS start, $end AS end, $maxFollows AS maxFollows
+                    MATCH (u:User)
+                    WHERE u.id >= start AND u.id < end
+                    WITH u
+                    MATCH (f:User)
+                    WHERE u.id <> f.id
+                    WITH u, f, rand() AS r
+                    ORDER BY r
+                    WITH u, collect(f) AS followers
+                    UNWIND range(0, toInteger(rand() * $maxFollows)) AS i
+                    WITH u, followers[i] AS f
+                    WHERE f IS NOT NULL AND rand() < 0.5
+                    CREATE (u)-[:FOLLOWS]->(f)
+                } IN TRANSACTIONS OF 1 ROW
+            `;
+            await session.run(followQuery, { start: i + 1, end: batchEnd, maxFollows: parseInt(maxFollows, 10) });
         }
-        if (follows.length > 0) {
-            await neo4jRepository.generateFollows(session, follows);
-        }
+        console.timeEnd('generateFollows');
 
         // Générer des produits en batch
-        let products = [];
-        for (let i = 0; i < productCount; i++) {
-            products.push({ id: i, name: `product${Date.now()}${i}`, price: (Math.random() * 100).toFixed(2) });
+        batchSize = 1000;
+        console.time('generateProducts');
+        for (let i = 0; i < productCount; i += batchSize) {
+            const batchEnd = Math.min(i + batchSize, productCount);
+            const productQuery = `
+                UNWIND range($start, $end) AS id
+                CREATE (p:Product {id: id, name: 'product' + id + toString(timestamp()), price: round(rand() * 100 * 100) / 100.0})
+            `;
+            await session.run(productQuery, { start: i + 1, end: batchEnd });
         }
-        await neo4jRepository.generateProducts(session, products);
-
-        // Récupérer les IDs des produits
-        const productIds = await neo4jRepository.getProductIds(session);
+        console.timeEnd('generateProducts');
 
         // Générer des commandes et leurs relations en batch
-        let orders = [];
-        let orderRelations = [];
-        let orderProducts = [];
-        let orderIndex = 0;
-
-        for (const userId of userIds) {
-            const numOrders = Math.floor(Math.random() * (parseInt(maxProducts) + 1));
-            for (let i = 0; i < numOrders; i++) {
-                const orderId = `order${Date.now()}${orderIndex++}`;
-                const createdAt = new Date().toISOString();
-                orders.push({ id: orderId, created_at: createdAt });
-                orderRelations.push({ userId, orderId });
-
-                const numOrderItems = Math.floor(Math.random() * (parseInt(maxProducts) + 1));
-                const shuffledProductIds = productIds.slice(0, numOrderItems);
-                shuffledProductIds.forEach(productId => {
-                    orderProducts.push({ orderId, productId, quantity: Math.floor(Math.random() * 10) + 1 });
-                });
-            }
+        console.time('generateOrders');
+        for (let i = 0; i < userCount; i += batchSize) {
+            const batchEnd = Math.min(i + batchSize, userCount);
+            const orderQuery = `
+                CALL {
+                    WITH $start AS start, $end AS end, $maxProducts AS maxProducts
+                    MATCH (u:User)
+                    WHERE u.id >= start AND u.id < end AND rand() < 0.7 // 70% de chance qu'un utilisateur passe une commande
+                    WITH u
+                    MATCH (p:Product)
+                    WITH u, p, rand() AS r
+                    ORDER BY r
+                    WITH u, collect(p) AS products
+                    UNWIND range(0, toInteger(rand() * $maxProducts)) AS i
+                    WITH u, products[i] AS p
+                    WHERE p IS NOT NULL
+                    CREATE (o:Order {id: 'order' + toString(timestamp()), created_at: datetime()})
+                    CREATE (u)-[:ORDERED]->(o)
+                    CREATE (o)-[:ORDERED_PRODUCTS {quantity: toInteger(rand() * 10) + 1}]->(p)
+                } IN TRANSACTIONS OF 1 ROW
+            `;
+            await session.run(orderQuery, { start: i + 1, end: batchEnd, maxProducts: parseInt(maxProducts, 10) });
         }
-
-        if (orders.length > 0) {
-            await neo4jRepository.generateOrders(session, orders);
-        }
-        if (orderRelations.length > 0) {
-            await neo4jRepository.generateOrderRelations(session, orderRelations);
-        }
-        if (orderProducts.length > 0) {
-            await neo4jRepository.generateOrderProducts(session, orderProducts);
-        }
+        console.timeEnd('generateOrders');
     } finally {
         session.close();
     }
